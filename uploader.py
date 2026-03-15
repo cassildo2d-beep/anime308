@@ -1,97 +1,96 @@
 import os
-import time
-import subprocess
-
-STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID")
+import asyncio
+from pyrogram.types import InputMediaVideo
 
 
-def get_video_info(video_path):
+# =====================================
+# EXTRAIR INFO DO VÍDEO
+# =====================================
+
+async def get_video_info(filepath):
+
     cmd = [
         "ffprobe",
         "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,duration",
-        "-of", "default=noprint_wrappers=1",
-        video_path
+        "-show_entries",
+        "stream=width,height:format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        filepath
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
 
-    width = 1280
-    height = 720
-    duration = 0
+    stdout, _ = await process.communicate()
 
-    for line in result.stdout.splitlines():
-        if line.startswith("width="):
-            width = int(line.split("=")[1])
-        elif line.startswith("height="):
-            height = int(line.split("=")[1])
-        elif line.startswith("duration="):
-            duration = int(float(line.split("=")[1]))
+    output = stdout.decode().split("\n")
+
+    width = int(float(output[0])) if output[0] else 1280
+    height = int(float(output[1])) if output[1] else 720
+    duration = int(float(output[2])) if output[2] else 0
 
     return width, height, duration
 
 
-def generate_thumbnail(video_path):
-    thumb_path = video_path + ".jpg"
+# =====================================
+# GERAR THUMBNAIL
+# =====================================
+
+async def generate_thumbnail(filepath):
+
+    thumb_path = filepath + ".jpg"
 
     cmd = [
         "ffmpeg",
-        "-i", video_path,
         "-ss", "00:00:03",
-        "-vframes", "1",
-        thumb_path,
-        "-y"
+        "-i", filepath,
+        "-frames:v", "1",
+        "-q:v", "2",
+        "-y",
+        thumb_path
     ]
 
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    process = await asyncio.create_subprocess_exec(*cmd)
+    await process.wait()
 
-    return thumb_path
+    if os.path.exists(thumb_path):
+        return thumb_path
+
+    return None
 
 
-async def upload_video(userbot, filepath, message):
+# =====================================
+# UPLOAD PROFISSIONAL
+# =====================================
+
+async def upload_video(userbot, filepath, message, storage_chat_id):
 
     filename = os.path.basename(filepath)
-    thumb = generate_thumbnail(filepath)
-    width, height, duration = get_video_info(filepath)
 
-    last_percent = 0
-    last_edit_time = 0
+    await message.edit_text("🎞 Extraindo informações...")
 
-    async def progress(current, total):
-        nonlocal last_percent, last_edit_time
+    width, height, duration = await get_video_info(filepath)
+    thumb = await generate_thumbnail(filepath)
 
-        percent = (current / total) * 100
-        now = time.time()
-
-        if percent - last_percent >= 3 or (now - last_edit_time) > 2:
-            last_percent = percent
-            last_edit_time = now
-
-            bar = "█" * int(percent // 5)
-            bar = bar.ljust(20, "░")
-
-            try:
-                await message.edit_text(
-                    f"📤 Enviando...\n[{bar}] {percent:.2f}%"
-                )
-            except:
-                pass
+    await message.edit_text("📤 Enviando vídeo...")
 
     sent = await userbot.send_video(
-        chat_id=STORAGE_CHANNEL_ID,
+        chat_id=storage_chat_id,
         video=filepath,
         caption=filename,
-        thumb=thumb,
-        duration=duration,
         width=width,
         height=height,
-        supports_streaming=True,
-        progress=progress
+        duration=duration,
+        thumb=thumb,
+        supports_streaming=True
     )
 
-    if os.path.exists(thumb):
+    # Remove thumbnail depois
+    if thumb and os.path.exists(thumb):
         os.remove(thumb)
 
     return sent.id
-    
