@@ -1,21 +1,21 @@
 import os
 import asyncio
-from pyrogram.types import InputMediaVideo
+import json
+import time
 
 
-# =====================================
-# EXTRAIR INFO DO VÍDEO
-# =====================================
+# =====================================================
+# PEGAR METADATA REAL
+# =====================================================
 
-async def get_video_info(filepath):
+async def get_video_metadata(filepath):
 
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries",
-        "stream=width,height:format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
         filepath
     ]
 
@@ -26,36 +26,48 @@ async def get_video_info(filepath):
     )
 
     stdout, _ = await process.communicate()
+    data = json.loads(stdout.decode())
 
-    output = stdout.decode().split("\n")
+    duration = 0
+    width = 0
+    height = 0
 
-    width = int(float(output[0])) if output[0] else 1280
-    height = int(float(output[1])) if output[1] else 720
-    duration = int(float(output[2])) if output[2] else 0
+    try:
+        raw_duration = data.get("format", {}).get("duration", 0)
+        if raw_duration and raw_duration != "N/A":
+            duration = int(float(raw_duration))
+    except:
+        duration = 0
 
-    return width, height, duration
+    for stream in data.get("streams", []):
+        if stream.get("codec_type") == "video":
+            width = stream.get("width", 0) or 0
+            height = stream.get("height", 0) or 0
+            break
+
+    return duration, width, height
 
 
-# =====================================
-# GERAR THUMBNAIL
-# =====================================
+# =====================================================
+# GERAR THUMB
+# =====================================================
 
 async def generate_thumbnail(filepath):
 
     thumb_path = filepath + ".jpg"
 
-    cmd = [
-        "ffmpeg",
-        "-ss", "00:00:03",
-        "-i", filepath,
-        "-frames:v", "1",
-        "-q:v", "2",
-        "-y",
-        thumb_path
-    ]
+    cmd = (
+        f'ffmpeg -ss 00:00:05 -i "{filepath}" '
+        f'-vframes 1 -vf "scale=320:-1" -q:v 3 "{thumb_path}" -y'
+    )
 
-    process = await asyncio.create_subprocess_exec(*cmd)
-    await process.wait()
+    process = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL
+    )
+
+    await process.communicate()
 
     if os.path.exists(thumb_path):
         return thumb_path
@@ -63,34 +75,42 @@ async def generate_thumbnail(filepath):
     return None
 
 
-# =====================================
-# UPLOAD PROFISSIONAL
-# =====================================
+# =====================================================
+# UPLOAD COMPLETO COM INFO
+# =====================================================
+
+import os
 
 async def upload_video(userbot, filepath, message, storage_chat_id):
 
-    filename = os.path.basename(filepath)
+    await message.edit_text("📤 Preparando vídeo...")
 
-    await message.edit_text("🎞 Extraindo informações...")
-
-    width, height, duration = await get_video_info(filepath)
+    duration, width, height = await get_video_metadata(filepath)
     thumb = await generate_thumbnail(filepath)
 
-    await message.edit_text("📤 Enviando vídeo...")
+    file_name = os.path.basename(filepath)
+
+    # 🔥 Remove duplicação .mp4.mp4
+    if file_name.endswith(".mp4.mp4"):
+        file_name = file_name.replace(".mp4.mp4", ".mp4")
+
+    # 🔥 Remove extensão da legenda (opcional)
+    caption_name = file_name.rsplit(".", 1)[0]
 
     sent = await userbot.send_video(
         chat_id=storage_chat_id,
         video=filepath,
-        caption=filename,
+        duration=duration,
         width=width,
         height=height,
-        duration=duration,
         thumb=thumb,
+        file_name=file_name,
+        caption=f"🎬 {caption_name}",
         supports_streaming=True
     )
 
-    # Remove thumbnail depois
     if thumb and os.path.exists(thumb):
         os.remove(thumb)
 
     return sent.id
+                           
