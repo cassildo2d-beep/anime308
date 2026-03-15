@@ -6,20 +6,24 @@ FFPROBE = "/usr/bin/ffprobe"
 FFMPEG = "/usr/bin/ffmpeg"
 
 
+# =====================================================
+# METADATA
+# =====================================================
+
 async def get_video_metadata(file):
 
     duration = 0
-    width = 0
-    height = 0
+    width = 1280
+    height = 720
 
     try:
 
         process = await asyncio.create_subprocess_exec(
             FFPROBE,
-            "-v", "error",
-            "-show_entries", "format=duration",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
             "-show_streams",
-            "-of", "json",
             file,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
@@ -27,24 +31,29 @@ async def get_video_metadata(file):
 
         stdout, _ = await process.communicate()
 
-        data = json.loads(stdout)
+        data = json.loads(stdout.decode())
 
-        duration = int(float(data["format"]["duration"]))
+        if "format" in data:
+            duration = int(float(data["format"]["duration"]))
 
-        for stream in data["streams"]:
+        for stream in data.get("streams", []):
 
-            if stream["codec_type"] == "video":
+            if stream.get("codec_type") == "video":
 
-                width = stream.get("width", 0)
-                height = stream.get("height", 0)
+                width = stream.get("width", width)
+                height = stream.get("height", height)
 
                 break
 
-    except:
-        pass
+    except Exception as e:
+        print("Metadata error:", e)
 
     return duration, width, height
 
+
+# =====================================================
+# THUMBNAIL
+# =====================================================
 
 async def generate_thumb(file):
 
@@ -54,11 +63,11 @@ async def generate_thumb(file):
 
         process = await asyncio.create_subprocess_exec(
             FFMPEG,
-            "-ss", "00:00:02",
+            "-ss", "00:00:03",
             "-i", file,
-            "-frames:v", "1",
-            "-q:v", "2",
+            "-vframes", "1",
             "-vf", "scale=320:-1",
+            "-q:v", "2",
             thumb,
             "-y",
             stdout=asyncio.subprocess.DEVNULL,
@@ -70,13 +79,20 @@ async def generate_thumb(file):
         if os.path.exists(thumb):
             return thumb
 
-    except:
-        pass
+    except Exception as e:
+        print("Thumb error:", e)
 
     return None
 
 
+# =====================================================
+# UPLOAD VIDEO
+# =====================================================
+
 async def upload_video(userbot, filepath, message, storage_chat_id):
+
+    if not os.path.exists(filepath):
+        raise Exception("Arquivo não encontrado")
 
     await message.edit_text("📤 Preparando vídeo...")
 
@@ -84,15 +100,17 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
 
     thumb = await generate_thumb(filepath)
 
-    file_name = os.path.basename(filepath)
+    name = os.path.basename(filepath)
 
-    caption_name = file_name.rsplit(".", 1)[0]
+    caption = name.rsplit(".", 1)[0]
 
     sent = await userbot.send_video(
 
         chat_id=storage_chat_id,
 
         video=filepath,
+
+        caption=f"🎬 {caption}",
 
         duration=duration,
 
@@ -101,8 +119,6 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
         height=height,
 
         thumb=thumb,
-
-        caption=f"🎬 {caption_name}",
 
         supports_streaming=True
 
