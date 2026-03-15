@@ -2,34 +2,34 @@ import os
 import json
 import asyncio
 
+FFPROBE = "/usr/bin/ffprobe"
+FFMPEG = "/usr/bin/ffmpeg"
+
+
 # =====================================================
-# METADATA DO VIDEO
+# PEGAR METADATA DO VIDEO
 # =====================================================
 
 async def get_video_metadata(filepath):
-
-    cmd = [
-        "ffprobe",
-        "-v", "error",
-        "-print_format", "json",
-        "-show_streams",
-        "-show_format",
-        filepath
-    ]
-
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    stdout, _ = await process.communicate()
 
     duration = 0
     width = 0
     height = 0
 
     try:
+
+        process = await asyncio.create_subprocess_exec(
+            FFPROBE,
+            "-v", "error",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            filepath,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, _ = await process.communicate()
 
         data = json.loads(stdout.decode())
 
@@ -44,7 +44,6 @@ async def get_video_metadata(filepath):
 
                 width = stream.get("width") or 0
                 height = stream.get("height") or 0
-
                 break
 
     except:
@@ -61,26 +60,27 @@ async def generate_thumbnail(filepath):
 
     thumb = filepath + ".jpg"
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-ss", "00:00:03",
-        "-i", filepath,
-        "-vframes", "1",
-        "-vf", "scale=320:-1",
-        thumb
-    ]
+    try:
 
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
-    )
+        process = await asyncio.create_subprocess_exec(
+            FFMPEG,
+            "-y",
+            "-ss", "00:00:03",
+            "-i", filepath,
+            "-frames:v", "1",
+            "-vf", "scale=320:-1",
+            thumb,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
 
-    await process.communicate()
+        await process.communicate()
 
-    if os.path.exists(thumb):
-        return thumb
+        if os.path.exists(thumb):
+            return thumb
+
+    except:
+        pass
 
     return None
 
@@ -89,20 +89,22 @@ async def generate_thumbnail(filepath):
 # PROGRESSO UPLOAD
 # =====================================================
 
-async def upload_progress(current, total, message):
-
-    percent = (current / total) * 100
+async def progress(current, total, message):
 
     try:
+
+        percent = (current / total) * 100
+
         await message.edit_text(
-            f"📤 Enviando vídeo...\n{percent:.0f}%"
+            f"📤 Enviando vídeo...\n{percent:.1f}%"
         )
+
     except:
         pass
 
 
 # =====================================================
-# UPLOAD PRINCIPAL
+# UPLOAD VIDEO
 # =====================================================
 
 async def upload_video(userbot, filepath, message, storage_chat_id):
@@ -110,7 +112,7 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
     if not os.path.exists(filepath):
         raise Exception("Arquivo não encontrado")
 
-    await message.edit_text("📤 Preparando upload...")
+    await message.edit_text("📤 Preparando vídeo...")
 
     duration, width, height = await get_video_metadata(filepath)
 
@@ -118,7 +120,7 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
 
     file_name = os.path.basename(filepath)
 
-    # limpar nome
+    # corrigir nome duplicado
     if file_name.endswith(".mp4.mp4"):
         file_name = file_name.replace(".mp4.mp4", ".mp4")
 
@@ -144,12 +146,13 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
 
         supports_streaming=True,
 
-        progress=upload_progress,
+        progress=progress,
 
         progress_args=(message,)
 
     )
 
+    # apagar thumbnail
     if thumb and os.path.exists(thumb):
         os.remove(thumb)
 
