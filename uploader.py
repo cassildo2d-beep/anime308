@@ -81,47 +81,38 @@ async def generate_thumbnail(filepath):
 # =====================================================
 # UPLOAD COMPLETO COM INFO
 # =====================================================
-async def upload_video(userbot, filepath: str, message, storage_chat_id: int) -> Optional[int]:
-    """Faz upload de vídeo com thumb, duração e metadata"""
+
+import os
+
+async def upload_video(userbot, filepath, message, storage_chat_id):
+
     await message.edit_text("📤 Preparando vídeo...")
 
-    # 🔥 Pegar metadados e gerar thumbnail simultaneamente
-    duration, width, height, thumb = 0, 0, 0, None
-    try:
-        duration, width, height, thumb = await asyncio.gather(
-            get_video_metadata(filepath),
-            generate_thumbnail(filepath)
-        )
-        if isinstance(duration, tuple):
-            duration, width, height = duration  # descompacta tuple
-    except Exception as e:
-        print(f"[upload_video] Erro durante preparação: {e}")
+    duration, width, height = await get_video_metadata(filepath)
+    thumb = await generate_thumbnail(filepath)
 
     file_name = os.path.basename(filepath)
 
-    # 🔥 Limpeza do nome
+    # 🔥 Remove duplicação .mp4.mp4
     if file_name.endswith(".mp4.mp4"):
         file_name = file_name.replace(".mp4.mp4", ".mp4")
-    caption_name = os.path.splitext(file_name)[0]
 
-    try:
-        sent = await userbot.send_video(
-            chat_id=storage_chat_id,
-            video=filepath,
-            duration=duration,
-            width=width,
-            height=height,
-            thumb=thumb,
-            file_name=file_name,
-            caption=f"🎬 {caption_name}",
-            supports_streaming=True
-        )
-    except Exception as e:
-        print(f"[upload_video] Erro no envio: {e}")
-        return None
-    finally:
-        # 🔥 Remove thumb se existir
-        if thumb and os.path.exists(thumb):
-            os.remove(thumb)
+    # 🔥 Remove extensão da legenda (opcional)
+    caption_name = file_name.rsplit(".", 1)[0]
 
-    return getattr(sent, "id", None)
+    sent = await userbot.send_video(
+        chat_id=storage_chat_id,
+        video=filepath,
+        duration=duration,
+        width=width,
+        height=height,
+        thumb=thumb,
+        file_name=file_name,
+        caption=f"🎬 {caption_name}",
+        supports_streaming=True
+    )
+
+    if thumb and os.path.exists(thumb):
+        os.remove(thumb)
+
+    return sent.id
