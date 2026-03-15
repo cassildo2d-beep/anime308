@@ -1,15 +1,15 @@
 import os
 import asyncio
 import json
-import time 
-from typing import Optional, Tuple
+import time
 
 
 # =====================================================
 # PEGAR METADATA REAL
 # =====================================================
-async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
-    """Retorna (duração em segundos, largura, altura)"""
+
+async def get_video_metadata(filepath):
+
     cmd = [
         "ffprobe",
         "-v", "quiet",
@@ -19,8 +19,7 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
         filepath
     ]
 
-    try:
-        process = await asyncio.create_subprocess_exec(
+    process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
@@ -47,7 +46,6 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
             break
 
     return duration, width, height
-        
 
 
 # =====================================================
@@ -63,6 +61,7 @@ async def generate_thumbnail(filepath):
         f'-vframes 1 -vf "scale=320:-1" -q:v 3 "{thumb_path}" -y'
     )
 
+
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.DEVNULL,
@@ -75,7 +74,6 @@ async def generate_thumbnail(filepath):
         return thumb_path
 
     return None
-
 
 
 # =====================================================
@@ -116,3 +114,4 @@ async def upload_video(userbot, filepath, message, storage_chat_id):
         os.remove(thumb)
 
     return sent.id
+    
