@@ -10,14 +10,14 @@ import time
 
 async def get_video_metadata(filepath):
 
-    cmd = [
-    "/usr/bin/ffprobe",
-    "-v", "quiet",
-    "-print_format", "json",
-    "-show_format",
-    "-show_streams",
-    filepath
-    ]
+cmd = [
+        "ffprobe",
+        "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        filepath
+]
 
     process = await asyncio.create_subprocess_exec(
         *cmd,
