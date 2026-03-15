@@ -125,6 +125,13 @@ async def worker(app):
 
             result = await process_link(url, progress)
 
+            async def safe_edit(message, text):
+    try:
+        if message.text != text:
+            await message.edit_text(text)
+    except:
+        pass
+        
             # ===============================
             # PASTA
             # ===============================
