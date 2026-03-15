@@ -2,9 +2,12 @@ import os
 import asyncio
 import json
 from typing import Optional, Tuple
+import random
 
 
+# ================= METADATA ===================
 async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
+    """Retorna duração, largura e altura"""
     cmd = [
         "ffprobe",
         "-v", "quiet",
@@ -13,7 +16,6 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
         "-show_streams",
         filepath
     ]
-
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -44,7 +46,15 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
     return duration, width, height
 
 
-async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> Optional[str]:
+# ================= THUMB ===================
+async def generate_thumbnail(filepath: str, width: int = 320) -> Optional[str]:
+    """Gera thumbnail do frame mais interessante (aleatório entre 5% e 15% do vídeo)"""
+    duration, _, _ = await get_video_metadata(filepath)
+    if duration < 5:
+        time = 1
+    else:
+        time = max(1, int(duration * random.uniform(0.05, 0.15)))
+
     thumb_path = filepath + ".jpg"
     cmd = (
         f'ffmpeg -ss {time} -i "{filepath}" '
@@ -64,30 +74,28 @@ async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> 
     return None
 
 
+# ================= UPLOAD ===================
 async def upload_video(userbot, filepath: str, message, storage_chat_id: int) -> Optional[int]:
     await message.edit_text("📤 Preparando vídeo...")
-
-    # Pega metadados e thumbnail
-    try:
-        metadata, thumb = await asyncio.gather(
-            get_video_metadata(filepath),
-            generate_thumbnail(filepath)
-        )
-        duration, width, height = metadata
-    except Exception as e:
-        print(f"[upload_video] Erro durante preparação: {e}")
-        duration, width, height, thumb = 0, 0, 0, None
 
     file_name = os.path.basename(filepath)
     if file_name.endswith(".mp4.mp4"):
         file_name = file_name.replace(".mp4.mp4", ".mp4")
     caption_name = os.path.splitext(file_name)[0]
 
-    # Mostra duração no caption
-    duration_text = f"{duration // 60}:{duration % 60:02d}"
-    caption = f"🎬 {caption_name}\n⏱ Duração: {duration_text}"
+    # Pega metadados + thumbnail
+    try:
+        metadata, thumb = await asyncio.gather(
+            get_video_metadata(filepath),
+            generate_thumbnail(filepath)
+        )
+        duration, width, height = metadata
+    except:
+        duration, width, height, thumb = 0, 0, 0, None
 
-    # Envio do vídeo com thumbnail
+    caption = f"🎬 {caption_name}\n⏱ Duração: {duration // 60}:{duration % 60:02d}"
+
+    # Envio do vídeo com thumb real
     try:
         sent = await userbot.send_video(
             chat_id=storage_chat_id,
