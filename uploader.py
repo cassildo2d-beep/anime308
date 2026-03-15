@@ -11,12 +11,12 @@ import time
 async def get_video_metadata(filepath):
 
     cmd = [
-        "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        filepath
+    "/usr/bin/ffprobe",
+    "-v", "quiet",
+    "-print_format", "json",
+    "-show_format",
+    "-show_streams",
+    filepath
     ]
 
     process = await asyncio.create_subprocess_exec(
@@ -57,10 +57,10 @@ async def generate_thumbnail(filepath):
     thumb_path = filepath + ".jpg"
 
     cmd = (
-        f'ffmpeg -ss 00:00:05 -i "{filepath}" '
-        f'-vframes 1 -vf "scale=320:-1" -q:v 3 "{thumb_path}" -y'
-    )
-
+    f'/usr/bin/ffmpeg -ss 00:00:05 -i "{filepath}" '
+    f'-vframes 1 -vf "scale=320:-1" -q:v 3 "{thumb_path}" -y'
+        )
+    
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.DEVNULL,
