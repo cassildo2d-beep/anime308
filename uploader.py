@@ -6,10 +6,6 @@ FFPROBE = "/usr/bin/ffprobe"
 FFMPEG = "/usr/bin/ffmpeg"
 
 
-# =====================================================
-# METADATA DO VIDEO
-# =====================================================
-
 async def get_video_metadata(file):
 
     duration = 0
@@ -50,10 +46,6 @@ async def get_video_metadata(file):
     return duration, width, height
 
 
-# =====================================================
-# GERAR CAPA
-# =====================================================
-
 async def generate_thumb(file):
 
     thumb = file + ".jpg"
@@ -84,27 +76,23 @@ async def generate_thumb(file):
     return None
 
 
-# =====================================================
-# UPLOAD VIDEO
-# =====================================================
-
-async def upload_video(client, file, message, chat_id):
+async def upload_video(userbot, filepath, message, storage_chat_id):
 
     await message.edit_text("📤 Preparando vídeo...")
 
-    duration, width, height = await get_video_metadata(file)
+    duration, width, height = await get_video_metadata(filepath)
 
-    thumb = await generate_thumb(file)
+    thumb = await generate_thumb(filepath)
 
-    name = os.path.basename(file)
+    file_name = os.path.basename(filepath)
 
-    caption = name.rsplit(".", 1)[0]
+    caption_name = file_name.rsplit(".", 1)[0]
 
-    sent = await client.send_video(
+    sent = await userbot.send_video(
 
-        chat_id=chat_id,
+        chat_id=storage_chat_id,
 
-        video=file,
+        video=filepath,
 
         duration=duration,
 
@@ -114,7 +102,7 @@ async def upload_video(client, file, message, chat_id):
 
         thumb=thumb,
 
-        caption=f"🎬 {caption}",
+        caption=f"🎬 {caption_name}",
 
         supports_streaming=True
 
