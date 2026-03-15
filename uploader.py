@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import time 
 
 FFPROBE = "/usr/bin/ffprobe"
 FFMPEG = "/usr/bin/ffmpeg"
@@ -89,16 +90,33 @@ async def generate_thumbnail(filepath):
 # PROGRESSO UPLOAD
 # =====================================================
 
+last_update_time = 0
+last_percent = 0
+
+
 async def progress(current, total, message):
 
+    global last_update_time
+    global last_percent
+
+    percent = (current / total) * 100
+    now = time.time()
+
+    # atualizar apenas a cada 10%
+    if percent - last_percent < 10:
+        return
+
+    # atualizar no máximo a cada 3 segundos
+    if now - last_update_time < 3:
+        return
+
+    last_percent = percent
+    last_update_time = now
+
     try:
-
-        percent = (current / total) * 100
-
         await message.edit_text(
             f"📤 Enviando vídeo...\n{percent:.1f}%"
         )
-
     except:
         pass
 
