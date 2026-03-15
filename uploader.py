@@ -1,119 +1,97 @@
 import os
-import asyncio
-import json
 import time
+import subprocess
 
-=====================================================
+STORAGE_CHANNEL_ID = os.getenv("STORAGE_CHANNEL_ID")
 
-PEGAR METADATA REAL
 
-=====================================================
+def get_video_info(video_path):
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,duration",
+        "-of", "default=noprint_wrappers=1",
+        video_path
+    ]
 
-async def get_video_metadata(filepath):
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
-cmd = [  
-    "ffprobe",  
-    "-v", "quiet",  
-    "-print_format", "json",  
-    "-show_format",  
-    "-show_streams",  
-    filepath  
-]  
+    width = 1280
+    height = 720
+    duration = 0
 
-process = await asyncio.create_subprocess_exec(  
-    *cmd,  
-    stdout=asyncio.subprocess.PIPE,  
-    stderr=asyncio.subprocess.PIPE  
-)  
+    for line in result.stdout.splitlines():
+        if line.startswith("width="):
+            width = int(line.split("=")[1])
+        elif line.startswith("height="):
+            height = int(line.split("=")[1])
+        elif line.startswith("duration="):
+            duration = int(float(line.split("=")[1]))
 
-stdout, _ = await process.communicate()  
-data = json.loads(stdout.decode())  
+    return width, height, duration
 
-duration = 0  
-width = 0  
-height = 0  
 
-try:  
-    raw_duration = data.get("format", {}).get("duration", 0)  
-    if raw_duration and raw_duration != "N/A":  
-        duration = int(float(raw_duration))  
-except:  
-    duration = 0  
+def generate_thumbnail(video_path):
+    thumb_path = video_path + ".jpg"
 
-for stream in data.get("streams", []):  
-    if stream.get("codec_type") == "video":  
-        width = stream.get("width", 0) or 0  
-        height = stream.get("height", 0) or 0  
-        break  
+    cmd = [
+        "ffmpeg",
+        "-i", video_path,
+        "-ss", "00:00:03",
+        "-vframes", "1",
+        thumb_path,
+        "-y"
+    ]
 
-return duration, width, height
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-=====================================================
+    return thumb_path
 
-GERAR THUMB
 
-=====================================================
+async def upload_video(userbot, filepath, message):
 
-async def generate_thumbnail(filepath):
+    filename = os.path.basename(filepath)
+    thumb = generate_thumbnail(filepath)
+    width, height, duration = get_video_info(filepath)
 
-thumb_path = filepath + ".jpg"  
+    last_percent = 0
+    last_edit_time = 0
 
-cmd = (  
-    f'ffmpeg -ss 00:00:05 -i "{filepath}" '  
-    f'-vframes 1 -vf "scale=320:-1" -q:v 3 "{thumb_path}" -y'  
-)  
+    async def progress(current, total):
+        nonlocal last_percent, last_edit_time
 
-process = await asyncio.create_subprocess_shell(  
-    cmd,  
-    stdout=asyncio.subprocess.DEVNULL,  
-    stderr=asyncio.subprocess.DEVNULL  
-)  
+        percent = (current / total) * 100
+        now = time.time()
 
-await process.communicate()  
+        if percent - last_percent >= 3 or (now - last_edit_time) > 2:
+            last_percent = percent
+            last_edit_time = now
 
-if os.path.exists(thumb_path):  
-    return thumb_path  
+            bar = "█" * int(percent // 5)
+            bar = bar.ljust(20, "░")
 
-return None
+            try:
+                await message.edit_text(
+                    f"📤 Enviando...\n[{bar}] {percent:.2f}%"
+                )
+            except:
+                pass
 
-=====================================================
+    sent = await userbot.send_video(
+        chat_id=STORAGE_CHANNEL_ID,
+        video=filepath,
+        caption=filename,
+        thumb=thumb,
+        duration=duration,
+        width=width,
+        height=height,
+        supports_streaming=True,
+        progress=progress
+    )
 
-UPLOAD COMPLETO COM INFO
+    if os.path.exists(thumb):
+        os.remove(thumb)
 
-=====================================================
-
-import os
-
-async def upload_video(userbot, filepath, message, storage_chat_id):
-
-await message.edit_text("📤 Preparando vídeo...")  
-
-duration, width, height = await get_video_metadata(filepath)  
-thumb = await generate_thumbnail(filepath)  
-
-file_name = os.path.basename(filepath)  
-
-# 🔥 Remove duplicação .mp4.mp4  
-if file_name.endswith(".mp4.mp4"):  
-    file_name = file_name.replace(".mp4.mp4", ".mp4")  
-
-# 🔥 Remove extensão da legenda (opcional)  
-caption_name = file_name.rsplit(".", 1)[0]  
-
-sent = await userbot.send_video(  
-    chat_id=storage_chat_id,  
-    video=filepath,  
-    duration=duration,  
-    width=width,  
-    height=height,  
-    thumb=thumb,  
-    file_name=file_name,  
-    caption=f"🎬 {caption_name}",  
-    supports_streaming=True  
-)  
-
-if thumb and os.path.exists(thumb):  
-    os.remove(thumb)  
-
-return sent.id
-
+    return sent.id
+    
