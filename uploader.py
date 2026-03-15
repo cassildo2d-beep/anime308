@@ -8,8 +8,8 @@ import time
 # PEGAR METADATA REAL
 # =====================================================
 
-async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
-    """Retorna (duração em segundos, largura, altura)"""
+async def get_video_metadata(filepath):
+    
     cmd = [
         "ffprobe",
         "-v", "quiet",
