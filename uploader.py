@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import time 
 from typing import Optional, Tuple
 
 
@@ -20,15 +21,13 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
 
     try:
         process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        data = json.loads(stdout.decode())
-    except Exception as e:
-        print(f"[get_video_metadata] Erro: {e}")
-        return 0, 0, 0
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    stdout, _ = await process.communicate()
+    data = json.loads(stdout.decode())
 
     duration = 0
     width = 0
@@ -38,16 +37,17 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
         raw_duration = data.get("format", {}).get("duration", 0)
         if raw_duration and raw_duration != "N/A":
             duration = int(float(raw_duration))
-    except Exception:
+    except:
         duration = 0
 
     for stream in data.get("streams", []):
         if stream.get("codec_type") == "video":
-            width = stream.get("width") or 0
-            height = stream.get("height") or 0
+            width = stream.get("width", 0) or 0
+            height = stream.get("height", 0) or 0
             break
 
     return duration, width, height
+        
 
 
 # =====================================================
