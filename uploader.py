@@ -41,7 +41,7 @@ async def generate_thumbnail(filepath):
 
 async def upload_video(userbot, filepath, message, storage_chat_id):
 
-    await message.edit_text("📤 Enviando vídeo...")
+    await safe_edit(msg, "📤 Enviando vídeo...")
 
     thumb = await generate_thumbnail(filepath)
 
