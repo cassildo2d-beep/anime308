@@ -4,11 +4,7 @@ import json
 from typing import Optional, Tuple
 
 
-# =====================================================
-# PEGAR METADATA REAL
-# =====================================================
 async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
-    """Retorna (duração em segundos, largura, altura)"""
     cmd = [
         "ffprobe",
         "-v", "quiet",
@@ -20,9 +16,7 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
 
     try:
         process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, _ = await process.communicate()
         data = json.loads(stdout.decode())
@@ -38,7 +32,7 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
         raw_duration = data.get("format", {}).get("duration", 0)
         if raw_duration and raw_duration != "N/A":
             duration = int(float(raw_duration))
-    except Exception:
+    except:
         duration = 0
 
     for stream in data.get("streams", []):
@@ -50,11 +44,7 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
     return duration, width, height
 
 
-# =====================================================
-# GERAR THUMB
-# =====================================================
 async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> Optional[str]:
-    """Gera uma thumbnail do vídeo"""
     thumb_path = filepath + ".jpg"
     cmd = (
         f'ffmpeg -ss {time} -i "{filepath}" '
@@ -63,9 +53,7 @@ async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> 
 
     try:
         process = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+            cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
         )
         await process.communicate()
         if os.path.exists(thumb_path):
@@ -76,14 +64,10 @@ async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> 
     return None
 
 
-# =====================================================
-# UPLOAD COMPLETO COM INFO
-# =====================================================
 async def upload_video(userbot, filepath: str, message, storage_chat_id: int) -> Optional[int]:
-    """Faz upload de vídeo com thumb, duração e metadata"""
     await message.edit_text("📤 Preparando vídeo...")
 
-    # Pega metadados e thumb corretamente
+    # Pega metadados e thumbnail
     try:
         metadata, thumb = await asyncio.gather(
             get_video_metadata(filepath),
@@ -99,18 +83,11 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
         file_name = file_name.replace(".mp4.mp4", ".mp4")
     caption_name = os.path.splitext(file_name)[0]
 
-    # 🔹 Mostrar duração e thumbnail antes do envio do vídeo
-    duration_text = f"{duration // 60}:{duration % 60:02d}"  # minutos:segundos
-    if thumb and os.path.exists(thumb):
-        await userbot.send_photo(
-            chat_id=storage_chat_id,
-            photo=thumb,
-            caption=f"🎬 {caption_name}\n⏱ Duração: {duration_text}"
-        )
-    else:
-        await message.edit_text(f"🎬 {caption_name}\n⏱ Duração: {duration_text}")
+    # Mostra duração no caption
+    duration_text = f"{duration // 60}:{duration % 60:02d}"
+    caption = f"🎬 {caption_name}\n⏱ Duração: {duration_text}"
 
-    # 🔹 Envio do vídeo
+    # Envio do vídeo com thumbnail
     try:
         sent = await userbot.send_video(
             chat_id=storage_chat_id,
@@ -118,16 +95,15 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
             duration=duration,
             width=width,
             height=height,
-            thumb=thumb,
+            thumb=thumb if thumb and os.path.exists(thumb) else None,
             file_name=file_name,
-            caption=f"🎬 {caption_name}",
+            caption=caption,
             supports_streaming=True
         )
     except Exception as e:
         print(f"[upload_video] Erro no envio: {e}")
         return None
     finally:
-        # 🔥 Remove thumb se existir
         if thumb and os.path.exists(thumb):
             os.remove(thumb)
 
