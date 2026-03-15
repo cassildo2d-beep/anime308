@@ -4,7 +4,6 @@ import json
 from typing import Optional, Tuple
 import random
 
-
 # ================= METADATA ===================
 async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
     """Retorna duração, largura e altura"""
@@ -45,10 +44,29 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
 
     return duration, width, height
 
+# ================= REPROCESSAR VIDEO ===================
+async def reprocess_video(filepath: str) -> str:
+    """Reprocessa vídeo para streaming e duração correta"""
+    output_path = filepath + ".processed.mp4"
+    cmd = (
+        f'ffmpeg -i "{filepath}" -c copy -movflags +faststart -y "{output_path}"'
+    )
+    try:
+        process = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await process.communicate()
+        if os.path.exists(output_path):
+            return output_path
+    except Exception as e:
+        print(f"[reprocess_video] Erro: {e}")
+    return filepath  # fallback para o vídeo original se der erro
 
 # ================= THUMB ===================
 async def generate_thumbnail(filepath: str, width: int = 320) -> Optional[str]:
-    """Gera thumbnail do frame mais interessante (aleatório entre 5% e 15% do vídeo)"""
+    """Gera thumbnail do frame mais interessante (5–15% do vídeo)"""
     duration, _, _ = await get_video_metadata(filepath)
     if duration < 5:
         time = 1
@@ -73,7 +91,6 @@ async def generate_thumbnail(filepath: str, width: int = 320) -> Optional[str]:
 
     return None
 
-
 # ================= UPLOAD ===================
 async def upload_video(userbot, filepath: str, message, storage_chat_id: int) -> Optional[int]:
     await message.edit_text("📤 Preparando vídeo...")
@@ -83,11 +100,14 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
         file_name = file_name.replace(".mp4.mp4", ".mp4")
     caption_name = os.path.splitext(file_name)[0]
 
-    # Pega metadados + thumbnail
+    # Reprocessa o vídeo
+    processed_path = await reprocess_video(filepath)
+
+    # Pega metadados e thumbnail
     try:
         metadata, thumb = await asyncio.gather(
-            get_video_metadata(filepath),
-            generate_thumbnail(filepath)
+            get_video_metadata(processed_path),
+            generate_thumbnail(processed_path)
         )
         duration, width, height = metadata
     except:
@@ -99,7 +119,7 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
     try:
         sent = await userbot.send_video(
             chat_id=storage_chat_id,
-            video=filepath,
+            video=processed_path,
             duration=duration,
             width=width,
             height=height,
@@ -112,7 +132,10 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
         print(f"[upload_video] Erro no envio: {e}")
         return None
     finally:
+        # Remove arquivos temporários
         if thumb and os.path.exists(thumb):
             os.remove(thumb)
+        if processed_path != filepath and os.path.exists(processed_path):
+            os.remove(processed_path)
 
     return getattr(sent, "id", None)
