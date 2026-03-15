@@ -24,7 +24,7 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
+        stdout, _ = await process.communicate()
         data = json.loads(stdout.decode())
     except Exception as e:
         print(f"[get_video_metadata] Erro: {e}")
@@ -56,7 +56,6 @@ async def get_video_metadata(filepath: str) -> Tuple[int, int, int]:
 async def generate_thumbnail(filepath: str, time: int = 5, width: int = 320) -> Optional[str]:
     """Gera uma thumbnail do vídeo"""
     thumb_path = filepath + ".jpg"
-
     cmd = (
         f'ffmpeg -ss {time} -i "{filepath}" '
         f'-vframes 1 -vf "scale={width}:-1" -q:v 3 "{thumb_path}" -y'
@@ -84,25 +83,34 @@ async def upload_video(userbot, filepath: str, message, storage_chat_id: int) ->
     """Faz upload de vídeo com thumb, duração e metadata"""
     await message.edit_text("📤 Preparando vídeo...")
 
-    # 🔥 Pegar metadados e gerar thumbnail simultaneamente
-    duration, width, height, thumb = 0, 0, 0, None
+    # Pega metadados e thumb corretamente
     try:
-        duration, width, height, thumb = await asyncio.gather(
+        metadata, thumb = await asyncio.gather(
             get_video_metadata(filepath),
             generate_thumbnail(filepath)
         )
-        if isinstance(duration, tuple):
-            duration, width, height = duration  # descompacta tuple
+        duration, width, height = metadata
     except Exception as e:
         print(f"[upload_video] Erro durante preparação: {e}")
+        duration, width, height, thumb = 0, 0, 0, None
 
     file_name = os.path.basename(filepath)
-
-    # 🔥 Limpeza do nome
     if file_name.endswith(".mp4.mp4"):
         file_name = file_name.replace(".mp4.mp4", ".mp4")
     caption_name = os.path.splitext(file_name)[0]
 
+    # 🔹 Mostrar duração e thumbnail antes do envio do vídeo
+    duration_text = f"{duration // 60}:{duration % 60:02d}"  # minutos:segundos
+    if thumb and os.path.exists(thumb):
+        await userbot.send_photo(
+            chat_id=storage_chat_id,
+            photo=thumb,
+            caption=f"🎬 {caption_name}\n⏱ Duração: {duration_text}"
+        )
+    else:
+        await message.edit_text(f"🎬 {caption_name}\n⏱ Duração: {duration_text}")
+
+    # 🔹 Envio do vídeo
     try:
         sent = await userbot.send_video(
             chat_id=storage_chat_id,
